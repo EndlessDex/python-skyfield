@@ -102,6 +102,67 @@ def test_sunrise_sunset_new():
         return t, array([1, 0])
     _sunrise_sunset(f)
 
+def _moonrise_moonset(f):
+    ts = api.load.timescale()
+    t0 = ts.utc(2018, 9, 12, 4)
+    t1 = ts.utc(2018, 9, 13, 4)
+    e = api.load('de421.bsp')
+    bluffton = api.Topos('40.8939 N', '83.8917 W')
+    time, type, valid  = f(t0, t1, e, bluffton)
+    strings = time.utc_strftime('%Y-%m-%d %H:%M')
+    assert strings == ['2018-09-12 14:23', '2018-09-13 01:52']
+    assert (type == (1, 0)).all()
+    assert (valid == (True, True)).all()
+
+    t0 = ts.utc(2023, 2, 20)
+    t1 = t0 + 1
+    lat70 = api.wgs84.latlon(70, 0, 0)
+    time, type, valid = f(t0, t1, e, lat70)
+    strings = time.utc_strftime('%Y-%m-%d %H:%M')
+    assert strings == ['2023-02-20 09:37', '2023-02-20 15:56']
+    assert (type == (1, 0)).all()
+    assert (valid == (True, True)).all()
+
+def _moonrise_moonset_new_specific(f):
+    ts = api.load.timescale()
+    e = api.load('de421.bsp')
+
+    t0 = ts.utc(2023, 2, 18)
+    t1 = t0 + 1
+    lat70 = api.wgs84.latlon(70, 0, 0)
+    time, type, valid  = f(t0, t1, e, lat70)
+    strings = time.utc_strftime('%Y-%m-%d %H:%M')
+    assert strings == ['2023-02-18 10:34']
+    assert (type == (1)).all()
+    assert (valid == (False)).all()
+
+    t0 = ts.utc(2023, 2, 19)
+    t1 = t0 + 1
+    lat70 = api.wgs84.latlon(70, 0, 0)
+    time, type, valid = f(t0, t1, e, lat70)
+    strings = time.utc_strftime('%Y-%m-%d %H:%M')
+    assert strings == ['2023-02-19 11:36']
+    assert (type == (1)).all()
+    assert (valid == (False)).all()
+
+def test_moonrise_moonset_old():
+    def f(t0, t1, e, topos):
+        t, e = almanac.find_discrete(t0, t1, almanac.risings_and_settings(e, e['moon'], topos, horizon_degrees=-34 / 60))
+        # Add array of trues to signify all true events
+        return t, e, array(len(t) * [True])
+    _moonrise_moonset(f)
+
+def test_moonrise_moonset_new():
+    def f(t0, t1, e, topos):
+        # Set the horizon to match the old implementation (even though this is less accurate)
+        r, rv = almanac.find_risings(e['earth'] + topos, e['moon'], t0, t1, horizon_degrees=-34 / 60)
+        s, sv = almanac.find_settings(e['earth'] + topos, e['moon'], t0, t1, horizon_degrees=-34 / 60)
+        t = _concat(r, s)
+        # Add array of 0/1 to indicate risings/settings
+        return t, array(len(r) * [1] + len(s) * [0]), array(list(rv) + list(sv))
+    _moonrise_moonset(f)
+    _moonrise_moonset_new_specific(f)
+
 def test_dark_twilight_day():
     ts = api.load.timescale()
     t0 = ts.utc(2019, 11, 8, 4)

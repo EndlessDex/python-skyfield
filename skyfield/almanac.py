@@ -336,7 +336,7 @@ _sun_horizon_radians = -50.0 / 21600.0 * tau
 _refraction_radians = -34.0 / 21600.0 * tau
 _moon_radius_m = 1.7374e6
 
-def _find(observer, target, start_time, end_time, horizon_degrees, f):
+def _find(observer, target, start_time, end_time, horizon_degrees, f, find_type):
     # Build a function h() that returns the angle above or below the
     # horizon we are aiming for, in radians.
     if horizon_degrees is None:
@@ -409,8 +409,32 @@ def _find(observer, target, start_time, end_time, horizon_degrees, f):
         timebump = ha_adjustment / ha_per_day
         t = ts.tt_jd(t.whole, t.tt_fraction + timebump)
 
-    is_above_horizon = (desired_ha % pi != 0.0)
-    return t, is_above_horizon
+    # consider before event to be 1 minute before.
+    alt_before, _, distance_before = observer.at(t - (1 / 1440)).observe(target).apparent().altaz()
+    alt, _, distance = observer.at(t).observe(target).apparent().altaz()
+    if find_type == -1:
+        # Looking for settings, make sure below horizon (or within 1as) now and previously above
+        true_event = (
+            alt.radians < h(distance)
+            or abs(alt.radians - h(distance)) < Angle(degrees=1 / 3600).radians
+        ) and alt_before.radians > h(distance_before)
+        # if not true event and were already set, then not a setting at all
+        if not true_event and alt_before.radians < h(distance_before):
+            t = t[[]]
+            true_event = true_event[[]]
+    elif find_type == 1:
+        # Looking for risings, make sure above horizon (or within 1as) now and previously below
+        true_event = (
+            alt.radians > h(distance)
+            or abs(alt.radians - h(distance)) < Angle(degrees=1 / 3600).radians
+        ) and alt_before.radians < h(distance_before)
+        # if not true event and were already risen, then not a rising at all
+        if not true_event and alt_before.radians > h(distance_before):
+            t = t[[]]
+            true_event = true_event[[]]
+    else:  # Looking for transit
+        true_event = desired_ha % pi != 0.0
+    return t, true_event
 
 def find_risings(observer, target, start_time, end_time, horizon_degrees=None):
     """Return the times at which a target rises above the eastern horizon.
@@ -430,7 +454,7 @@ def find_risings(observer, target, start_time, end_time, horizon_degrees=None):
 
     """
     return _find(observer, target, start_time, end_time, horizon_degrees,
-                 _rising_hour_angle)
+                 _rising_hour_angle, 1)
 
 def find_settings(observer, target, start_time, end_time, horizon_degrees=None):
     """Return the times at which a target sets below the western horizon.
@@ -450,7 +474,7 @@ def find_settings(observer, target, start_time, end_time, horizon_degrees=None):
 
     """
     return _find(observer, target, start_time, end_time, horizon_degrees,
-                 _setting_hour_angle)
+                 _setting_hour_angle, -1)
 
 def find_transits(observer, target, start_time, end_time):
     """Return the times at which a target transits across the meridian.
@@ -466,5 +490,5 @@ def find_transits(observer, target, start_time, end_time):
     .. versionadded:: 1.47
 
     """
-    t, _ = _find(observer, target, start_time, end_time, 0.0, _transit_ha)
+    t, _ = _find(observer, target, start_time, end_time, 0.0, _transit_ha, 0)
     return t
