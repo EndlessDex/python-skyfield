@@ -414,24 +414,22 @@ def _find(observer, target, start_time, end_time, horizon_degrees, f, find_type)
     alt, _, distance = observer.at(t).observe(target).apparent().altaz()
     if find_type == -1:
         # Looking for settings, make sure below horizon (or within 1as) now and previously above
-        true_event = (
-            alt.radians < h(distance)
-            or abs(alt.radians - h(distance)) < Angle(degrees=1 / 3600).radians
-        ) and alt_before.radians > h(distance_before)
-        # if not true event and were already set, then not a setting at all
-        if not true_event and alt_before.radians < h(distance_before):
-            t = t[[]]
-            true_event = true_event[[]]
+        true_event = np.logical_and(np.logical_or(alt.radians < h(distance),
+                                                   abs(alt.radians - h(distance)) < Angle(degrees=1 / 3600).radians),
+                                     alt_before.radians > h(distance_before))
+        # keep if true event or were were already risen (ie proper false event)
+        filter = np.logical_or(true_event == True, alt_before.radians > h(distance_before))
+        t = t[filter]
+        true_event = true_event[filter]
     elif find_type == 1:
         # Looking for risings, make sure above horizon (or within 1as) now and previously below
-        true_event = (
-            alt.radians > h(distance)
-            or abs(alt.radians - h(distance)) < Angle(degrees=1 / 3600).radians
-        ) and alt_before.radians < h(distance_before)
-        # if not true event and were already risen, then not a rising at all
-        if not true_event and alt_before.radians > h(distance_before):
-            t = t[[]]
-            true_event = true_event[[]]
+        true_event = np.logical_and(np.logical_or(alt.radians > h(distance),
+                                                abs(alt.radians - h(distance)) < Angle(degrees=1 / 3600).radians),
+                                    alt_before.radians < h(distance_before))
+        # keep if true event or were were already set (ie proper false event)
+        filter = np.logical_or(true_event == True, alt_before.radians < h(distance_before))
+        t = t[filter]
+        true_event = true_event[filter]
     else:  # Looking for transit
         true_event = desired_ha % pi != 0.0
     return t, true_event
