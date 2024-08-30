@@ -410,7 +410,10 @@ def _find(observer, target, start_time, end_time, horizon_degrees, f, find_type)
         t = ts.tt_jd(t.whole, t.tt_fraction + timebump)
 
     # consider before event to be 1 minute before.
-    alt_before, _, distance_before = observer.at(t - (1 / 1440)).observe(target).apparent().altaz()
+    t_before = t - (1 / 1440)
+    _fastify(t_before)
+    alt_before, _, distance_before = observer.at(t_before).observe(target).apparent().altaz()
+    _fastify(t)
     alt, _, distance = observer.at(t).observe(target).apparent().altaz()
     if find_type == -1:
         # Looking for settings, make sure below horizon (or within 1as) now and previously above
