@@ -8,6 +8,7 @@
 import datetime as dt
 import sys
 from collections import defaultdict
+from textwrap import fill
 from time import time
 from skyfield import almanac
 from skyfield.api import load, wgs84
@@ -158,21 +159,21 @@ Day Rise  Set  Rise  Set  Rise  Set  Rise  Set  Rise  Set  Rise  Set  Rise  Set 
 Add one hour for daylight time, if and when in use.
 """
 
-def test(table, e, body, t0, t1, topo, time_zone_offset):
-    usno_rises = []  # (month, minutes_into_day)
+def test(table, e, body, t0, t1, topo, timezone):
+    usno_rises = []
 
     for line in table.splitlines():
         if not line[0:1].isdigit():
             continue
         day_of_month = int(line[:2])
-        months_and_texts = [(i+1, line[4+i*11:8+i*11]) for i in range(0, 11)]
+        months_and_texts = [(i+1, line[4+i*11:8+i*11]) for i in range(0, 12)]
         for month, text in months_and_texts:
             if text.isdigit():
                 hours = int(text[0:2])
                 minutes = int(text[2:4])
                 usno_rises.append((month, day_of_month, hours * 60 + minutes))
 
-    usno_rises.sort()
+    #usno_rises.sort()
     #print(usno_rises)
 
     observer = e['Earth'] + topo
@@ -183,7 +184,7 @@ def test(table, e, body, t0, t1, topo, time_zone_offset):
             f = almanac.sunrise_sunset(e, topo)
         else:
             f = almanac.risings_and_settings(e, body, topo, horizon)
-            f.step_days = 1/24
+            f.step_days = 1 / 1440.0
         tt = time()
         t, y = almanac.find_discrete(t0, t1, f)
         duration = time() - tt
@@ -195,50 +196,62 @@ def test(table, e, body, t0, t1, topo, time_zone_offset):
         t = t[y == True]
         duration = time() - tt
     print('Duration:', duration, 'seconds')
-    t -= dt.timedelta(hours=time_zone_offset)
+
+    t += timezone
 
     skyfield_rises = []
 
     thirty_seconds = 1.0 / 24.0 / 60.0 / 2.0  # to round to next minute
     for ti in t + thirty_seconds:
+        #print(ti.utc_strftime())
         u = ti.utc
         tup = u.month, u.day, u.hour * 60 + u.minute
         skyfield_rises.append(tup)
 
-    errors = defaultdict(int)
+    usno_dict = {(month, day): time for month, day, time in usno_rises}
+    skyfield_dict = {(month, day): time for month, day, time in skyfield_rises}
 
-    for u, s in zip(usno_rises, skyfield_rises):
-        month_and_day_matches = (u[0:2] == s[0:2])
-        if not month_and_day_matches:
-            print()
-            print('Error: usno', u, 'skyfield', s)
-            exit(1)
-        error = u[2] - s[2]
-        errors[error] += 1
-        print(error or '.', end=' ')
+    errors = []
+
+    for key in sorted(usno_dict.keys() | skyfield_dict.keys()):
+        month, day = key
+        u = usno_dict.get(key)
+        s = skyfield_dict.get(key)
+        if not u:
+            errors.append('usno-miss')
+            print('USNO does not list:', month, day, divmod(int(s), 60))
+            #continue
+        elif not s:
+            errors.append('skyfield-miss')
+            print('Skyfield is missing:', month, day, divmod(u, 60))
+            #continue
+        elif u == s:
+            errors.append('.')
+        else:
+            errors.append(str(u - s))
+    print(fill(' '.join(errors), 78))
     print()
-    print(sorted(errors.items()))
+    print('Errors encountered:', sorted(set(errors)))
 
-    toff = t + dt.timedelta(hours=time_zone_offset)
+    toff = t - timezone
     alt, az, _ = observer.at(toff).observe(body).apparent().altaz()
     print('Altitude min:', min(alt.degrees), ' max:', max(alt.degrees))
 
 def main():
     ts = load.timescale()
     e = load('de421.bsp')
-
-    time_zone_offset = 7
-    t0 = ts.utc(2023, 1, 1, time_zone_offset)
-    t1 = ts.utc(2024, 1, 1, time_zone_offset)
+    time_offset = 7
+    t0 = ts.utc(2023, 1, 1, time_offset)
+    t1 = ts.utc(2024, 1, 1, time_offset)
     fredonia = wgs84.latlon(36 + 57/60.0, - (112 + 31/60.0))
-    test(SUN_TABLE, e, e['Sun'], t0, t1, fredonia, time_zone_offset)
-    test(MOON_TABLE, e, e['Moon'], t0, t1, fredonia, time_zone_offset)
+    test(SUN_TABLE, e, e['Sun'], t0, t1, fredonia, dt.timedelta(hours=-time_offset))
+    test(MOON_TABLE, e, e['Moon'], t0, t1, fredonia, dt.timedelta(hours=-time_offset))
     
     time_zone_offset = 0
     t0 = ts.utc(2023, 1, 1, time_zone_offset)
     t1 = ts.utc(2024, 1, 1, time_zone_offset)
     lat70 = wgs84.latlon(70, 0)
-    test(MOON_TABLE_2, e, e['Moon'], t0, t1, lat70, time_zone_offset)
+    test(MOON_TABLE_2, e, e['Moon'], t0, t1, lat70, dt.timedelta(hours=0))
 
 if __name__ == '__main__':
     main()
