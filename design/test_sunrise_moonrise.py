@@ -158,7 +158,7 @@ Day Rise  Set  Rise  Set  Rise  Set  Rise  Set  Rise  Set  Rise  Set  Rise  Set 
 Add one hour for daylight time, if and when in use.
 """
 
-def test(table, e, body, t0, t1, topo):
+def test(table, e, body, t0, t1, topo, time_zone_offset):
     usno_rises = []  # (month, minutes_into_day)
 
     for line in table.splitlines():
@@ -183,6 +183,7 @@ def test(table, e, body, t0, t1, topo):
             f = almanac.sunrise_sunset(e, topo)
         else:
             f = almanac.risings_and_settings(e, body, topo, horizon)
+            f.step_days = 1/24
         tt = time()
         t, y = almanac.find_discrete(t0, t1, f)
         duration = time() - tt
@@ -194,7 +195,7 @@ def test(table, e, body, t0, t1, topo):
         t = t[y == True]
         duration = time() - tt
     print('Duration:', duration, 'seconds')
-    t -= dt.timedelta(hours=7)
+    t -= dt.timedelta(hours=time_zone_offset)
 
     skyfield_rises = []
 
@@ -218,7 +219,7 @@ def test(table, e, body, t0, t1, topo):
     print()
     print(sorted(errors.items()))
 
-    toff = t + dt.timedelta(hours=7)
+    toff = t + dt.timedelta(hours=time_zone_offset)
     alt, az, _ = observer.at(toff).observe(body).apparent().altaz()
     print('Altitude min:', min(alt.degrees), ' max:', max(alt.degrees))
 
@@ -226,16 +227,18 @@ def main():
     ts = load.timescale()
     e = load('de421.bsp')
 
-    t0 = ts.utc(2023, 1, 1, 7)
-    t1 = ts.utc(2024, 1, 1, 7)
+    time_zone_offset = 7
+    t0 = ts.utc(2023, 1, 1, time_zone_offset)
+    t1 = ts.utc(2024, 1, 1, time_zone_offset)
     fredonia = wgs84.latlon(36 + 57/60.0, - (112 + 31/60.0))
-    test(SUN_TABLE, e, e['Sun'], t0, t1, fredonia)
-    test(MOON_TABLE, e, e['Moon'], t0, t1, fredonia)
+    test(SUN_TABLE, e, e['Sun'], t0, t1, fredonia, time_zone_offset)
+    test(MOON_TABLE, e, e['Moon'], t0, t1, fredonia, time_zone_offset)
     
-    t0 = ts.utc(2023, 1, 1, 0)
-    t1 = ts.utc(2024, 1, 1, 0)
+    time_zone_offset = 0
+    t0 = ts.utc(2023, 1, 1, time_zone_offset)
+    t1 = ts.utc(2024, 1, 1, time_zone_offset)
     lat70 = wgs84.latlon(70, 0)
-    test(MOON_TABLE_2, e, e['Moon'], t0, t1, lat70)
+    test(MOON_TABLE_2, e, e['Moon'], t0, t1, lat70, time_zone_offset)
 
 if __name__ == '__main__':
     main()
